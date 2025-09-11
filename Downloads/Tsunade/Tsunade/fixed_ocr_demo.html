@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fixed OCR Demo - Error Handling</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .error { color: red; background: #ffe6e6; padding: 10px; border-radius: 5px; }
+        .success { color: green; background: #e6ffe6; padding: 10px; border-radius: 5px; }
+        .warning { color: orange; background: #fff3e6; padding: 10px; border-radius: 5px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        input[type="file"] { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fixed OCR Demo - Proper Error Handling</h1>
+        <p>This demo shows how to properly handle OCR responses to avoid the "Cannot read properties of undefined (reading 'split')" error.</p>
+        
+        <input type="file" id="fileInput" accept="image/*">
+        <button onclick="testOCRWithErrorHandling()">Test OCR with Error Handling</button>
+        <div id="result"></div>
+        
+        <h2>Code Example - Before (Broken):</h2>
+        <pre><code>// This causes the error:
+const lines = data.extracted_text.split('\n'); // Error if extracted_text is undefined</code></pre>
+        
+        <h2>Code Example - After (Fixed):</h2>
+        <pre><code>// Proper error handling:
+if (data && data.success && data.extracted_text) {
+    const lines = data.extracted_text.split('\n');
+    // Process lines safely...
+} else {
+    // Handle error case
+    console.error('OCR failed or no text extracted');
+    showError(data?.error || 'Unknown error occurred');
+}</code></pre>
+    </div>
+    
+    <script>
+        async function testOCRWithErrorHandling() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('result');
+            
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<div class="warning">Please select a file first</div>';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                resultDiv.innerHTML = '<div>Processing...</div>';
+                
+                const response = await fetch('/api/v1/ocr', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                // PROPER ERROR HANDLING - This prevents the split error
+                if (data && data.success && data.extracted_text) {
+                    // Success case - safe to use split
+                    const lines = data.extracted_text.split('\n');
+                    const lineCount = lines.length;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <h3>✅ OCR Success!</h3>
+                            <p><strong>Extracted Text:</strong></p>
+                            <pre>${data.extracted_text}</pre>
+                            <p><strong>Line Count:</strong> ${lineCount}</p>
+                            <p><strong>Lines Array:</strong></p>
+                            <pre>${JSON.stringify(lines, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    // Error case - handle gracefully
+                    const errorMessage = data?.error || data?.details || 'Unknown error occurred';
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <h3>❌ OCR Failed</h3>
+                            <p><strong>Error:</strong> ${errorMessage}</p>
+                            <p><strong>Raw Response:</strong></p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                            <p><strong>Why this doesn't crash:</strong> We check if extracted_text exists before calling split()</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Network/Parse Error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Network Error</h3>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>This could be due to network issues, CORS problems, or server errors.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Demonstrate the error that would occur without proper handling
+        function demonstrateError() {
+            const badData = { success: false }; // No extracted_text property
+            
+            try {
+                // This would cause the error:
+                const lines = badData.extracted_text.split('\n');
+            } catch (error) {
+                console.log('Error demonstrated:', error.message);
+                return error.message;
+            }
+        }
+        
+        // Show the error on page load
+        window.addEventListener('load', () => {
+            const errorMessage = demonstrateError();
+            console.log('This is the error that occurs without proper handling:', errorMessage);
+        });
+    </script>
+</body>
+</html>

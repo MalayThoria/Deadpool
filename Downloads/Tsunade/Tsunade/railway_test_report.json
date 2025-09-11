@@ -1,0 +1,69 @@
+{
+  "base_url": "https://deadpool-production.up.railway.app",
+  "timestamp": "2025-08-17 08:33:31",
+  "results": [
+    {
+      "test": "Health Check",
+      "success": true,
+      "message": "Server is healthy (Status: 200)",
+      "details": {
+        "status": "healthy",
+        "tesseract_available": true
+      }
+    },
+    {
+      "test": "API Documentation",
+      "success": false,
+      "message": "API docs not accessible (Status: 404)",
+      "details": {}
+    },
+    {
+      "test": "CORS Configuration",
+      "success": true,
+      "message": "CORS properly configured",
+      "details": {
+        "access-control-allow-origin": "http://localhost:3000",
+        "access-control-allow-methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+        "access-control-allow-headers": "Content-Type"
+      }
+    },
+    {
+      "test": "OCR Endpoint",
+      "success": true,
+      "message": "OCR successful, extracted 106 characters",
+      "details": {
+        "text_length": 106,
+        "preview": "Test Prescription\n\nPatient: John Doe\n\nMedication: Amoxicillin 500mg\nTake 1 tablet 3 times daily\n\nDr...."
+      }
+    },
+    {
+      "test": "Medicine Extraction",
+      "success": false,
+      "message": "Medicine extraction failed (Status: 404)",
+      "details": {
+        "response": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      }
+    },
+    {
+      "test": "Medicine Information",
+      "success": false,
+      "message": "Medicine info failed (Status: 404)",
+      "details": {
+        "response": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      }
+    },
+    {
+      "test": "Chat Endpoint",
+      "success": false,
+      "message": "Chat failed (Status: 500)",
+      "details": {
+        "response": "{\"details\":\"No API key provided. You can set your API key in code using 'openai.api_key = <API-KEY>', or you can set the environment variable OPENAI_API_KEY=<API-KEY>). If your API key is stored in a file, you can point the openai module at it with 'openai.api_key_path = <PATH>'. You can generate API keys in the OpenAI web interface. See https://platform.openai.com/account/api-keys for details.\",\"error\":\"Failed to generate chat response\"}\n"
+      }
+    }
+  ],
+  "summary": {
+    "total_tests": 7,
+    "passed": 3,
+    "failed": 4
+  }
+}

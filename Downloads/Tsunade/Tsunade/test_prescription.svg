@@ -1,0 +1,30 @@
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="white" stroke="black" stroke-width="2"/>
+  
+  <!-- Header -->
+  <text x="200" y="30" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">MEDICAL PRESCRIPTION</text>
+  
+  <!-- Doctor Info -->
+  <text x="20" y="60" font-family="Arial" font-size="12">Dr. John Smith, MD</text>
+  <text x="20" y="75" font-family="Arial" font-size="10">Internal Medicine Specialist</text>
+  
+  <!-- Patient Info -->
+  <text x="20" y="100" font-family="Arial" font-size="12" font-weight="bold">Patient: Jane Doe</text>
+  <text x="20" y="115" font-family="Arial" font-size="10">DOB: 01/15/1980</text>
+  
+  <!-- Prescription -->
+  <text x="20" y="140" font-family="Arial" font-size="12" font-weight="bold">Rx:</text>
+  
+  <text x="20" y="160" font-family="Arial" font-size="11">1. Amoxicillin 500mg</text>
+  <text x="30" y="175" font-family="Arial" font-size="10">Take 1 tablet twice daily for 7 days</text>
+  
+  <text x="20" y="195" font-family="Arial" font-size="11">2. Ibuprofen 400mg</text>
+  <text x="30" y="210" font-family="Arial" font-size="10">Take 1 tablet as needed for pain</text>
+  
+  <text x="20" y="230" font-family="Arial" font-size="11">3. Vitamin D3 1000 IU</text>
+  <text x="30" y="245" font-family="Arial" font-size="10">Take 1 tablet daily with food</text>
+  
+  <!-- Footer -->
+  <text x="20" y="270" font-family="Arial" font-size="10">Date: 12/15/2024</text>
+  <text x="250" y="270" font-family="Arial" font-size="10">Dr. Signature: _______________</text>
+</svg>

@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/v1/(.*)",
+      "dest": "https://deadpool-production.up.railway.app/api/v1/$1"
+    },
+    {
+      "src": "/Deadpool/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/Deadpool/favicon.ico",
+      "dest": "/favicon.ico"
+    },
+    {
+      "src": "/Deadpool/manifest.json",
+      "dest": "/manifest.json"
+    },
+    {
+      "src": "/Deadpool/sw.js",
+      "dest": "/sw.js"
+    },
+    {
+      "src": "/Deadpool/icon-(.*)",
+      "dest": "/icon-$1"
+    },
+    {
+      "src": "/Deadpool/(.*)",
+      "dest": "/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "REACT_APP_API_URL": "/api/v1"
+  }
+}

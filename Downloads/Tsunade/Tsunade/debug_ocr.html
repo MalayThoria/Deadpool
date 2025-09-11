@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OCR Debug Test</title>
+</head>
+<body>
+    <h1>OCR Debug Test</h1>
+    <input type="file" id="fileInput" accept="image/*">
+    <button onclick="testOCR()">Test OCR</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testOCR() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('result');
+            
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = 'Please select a file first';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                resultDiv.innerHTML = 'Processing...';
+                
+                const response = await fetch('/api/v1/ocr', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                resultDiv.innerHTML = `
+                    <h3>Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                    <h3>Extracted Text:</h3>
+                    <p>${data.extracted_text || 'No text found'}</p>
+                    <h3>Split Test:</h3>
+                    <p>Type of extracted_text: ${typeof data.extracted_text}</p>
+                    <p>Split result: ${data.extracted_text ? data.extracted_text.split('\n') : 'Cannot split - undefined'}</p>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

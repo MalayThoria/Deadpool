@@ -1,0 +1,11 @@
+{
+  "files": {
+    "main.css": "/Deadpool/static/css/main.79087dfa.css",
+    "main.js": "/Deadpool/static/js/main.4b0c17ce.js",
+    "index.html": "/Deadpool/index.html"
+  },
+  "entrypoints": [
+    "static/css/main.79087dfa.css",
+    "static/js/main.4b0c17ce.js"
+  ]
+}
