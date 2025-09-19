@@ -1,11 +1,13 @@
 {
   "files": {
-    "main.css": "/Deadpool/static/css/main.79087dfa.css",
-    "main.js": "/Deadpool/static/js/main.4b0c17ce.js",
-    "index.html": "/Deadpool/index.html"
+    "main.css": "/Deadpool/static/css/main.ff575264.css",
+    "main.js": "/Deadpool/static/js/main.2d5dad79.js",
+    "index.html": "/Deadpool/index.html",
+    "main.ff575264.css.map": "/Deadpool/static/css/main.ff575264.css.map",
+    "main.2d5dad79.js.map": "/Deadpool/static/js/main.2d5dad79.js.map"
   },
   "entrypoints": [
-    "static/css/main.79087dfa.css",
-    "static/js/main.4b0c17ce.js"
+    "static/css/main.ff575264.css",
+    "static/js/main.2d5dad79.js"
   ]
 }

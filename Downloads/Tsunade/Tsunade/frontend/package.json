@@ -2,6 +2,7 @@
   "name": "rx-assistant-frontend",
   "version": "1.0.0",
   "private": true,
+  "homepage": "https://malaythoria.github.io/Deadpool",
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",
@@ -46,4 +47,4 @@
     "postcss": "^8.4.31"
   },
   "proxy": "http://localhost:8000"
-} 
+}
