@@ -6,6 +6,11 @@ from datetime import datetime
 import enum
 from cryptography.fernet import Fernet
 import os
+from .health_analysis_models import (
+    DiseaseCondition, HealthExercise, PersonalizedExerciseRecommendation,
+    ExerciseSchedule, UserHealthAnalysisProfile, ExerciseCategory,
+    DifficultyLevel, ScheduleFrequency, exercise_disease_association
+)
 from database.config import Base
 
 # Encryption setup for GDPR/HIPAA compliance
@@ -242,8 +247,8 @@ class CalendarEvent(Base):
     # Event details
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    start_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True), nullable=False)
+    start_datetime = Column(DateTime(timezone=True), nullable=False)
+    end_datetime = Column(DateTime(timezone=True), nullable=False)
     
     # Exercise reference
     exercise_log_id = Column(Integer, ForeignKey("exercise_logs.id"))

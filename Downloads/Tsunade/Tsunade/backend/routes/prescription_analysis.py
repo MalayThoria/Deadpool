@@ -82,43 +82,48 @@ async def analyze_prescription(
         
         # Call OpenAI API using GPTProcessor
         if gpt_processor.client is None:
-            raise HTTPException(
-                status_code=500,
-                detail="OpenAI client not initialized. Please check API key configuration."
-            )
-        
-        response = gpt_processor.client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a medical information extraction specialist. Extract medical information from prescription text accurately and return valid JSON only."
-                },
-                {
-                    "role": "user",
-                    "content": extraction_prompt
-                }
-            ],
-            temperature=0.1,
-            max_tokens=1000
-        )
-        
-        # Parse the response
-        extracted_text = response.choices[0].message.content.strip()
-        
-        # Clean the response to extract JSON
-        json_start = extracted_text.find('{')
-        json_end = extracted_text.rfind('}') + 1
-        if json_start != -1 and json_end != -1:
-            json_text = extracted_text[json_start:json_end]
-        else:
-            json_text = extracted_text
-        
-        try:
-            extracted_data = json.loads(json_text)
-        except json.JSONDecodeError:
-            # Fallback: try to extract information using regex patterns
+            # Use fallback extraction when OpenAI is not available
+            print("OpenAI client not available, using fallback extraction")
             extracted_data = _fallback_extraction(request.prescription_text)
+        else:
+            try:
+                response = gpt_processor.client.chat.completions.create(
+                    model="gpt-3.5-turbo",  # Use gpt-3.5-turbo instead of gpt-4 for better availability
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a medical information extraction specialist. Extract medical information from prescription text accurately and return valid JSON only."
+                        },
+                        {
+                            "role": "user",
+                            "content": extraction_prompt
+                        }
+                    ],
+                    temperature=0.1,
+                    max_tokens=1000
+                )
+                
+                # Parse the response
+                extracted_text = response.choices[0].message.content.strip()
+                
+                # Clean the response to extract JSON
+                json_start = extracted_text.find('{')
+                json_end = extracted_text.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_text = extracted_text[json_start:json_end]
+                else:
+                    json_text = extracted_text
+                
+                try:
+                    extracted_data = json.loads(json_text)
+                except json.JSONDecodeError:
+                    # Fallback: try to extract information using regex patterns
+                    print("Failed to parse GPT response, using fallback extraction")
+                    extracted_data = _fallback_extraction(request.prescription_text)
+                    
+            except Exception as e:
+                print(f"OpenAI API call failed: {str(e)}, using fallback extraction")
+                extracted_data = _fallback_extraction(request.prescription_text)
         
         # Create ExtractedMedicalInfo object
         extracted_info = ExtractedMedicalInfo(**extracted_data)

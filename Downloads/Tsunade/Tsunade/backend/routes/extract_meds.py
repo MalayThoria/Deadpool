@@ -32,7 +32,7 @@ class ExtractMedsResponse(BaseModel):
 @router.post("/extract-meds", response_model=ExtractMedsResponse)
 async def extract_medicines(request: ExtractMedsRequest):
     """
-    Extract medicine names from prescription text using GPT-4
+    Extract medicine names from prescription text using GPT-4 with fallback to regex extraction
     """
     try:
         if not request.prescription_text.strip():
@@ -41,7 +41,7 @@ async def extract_medicines(request: ExtractMedsRequest):
                 detail="Prescription text is required"
             )
         
-        # Extract medicines using GPT
+        # Extract medicines using GPT (with fallback if OpenAI unavailable)
         raw_medicines = gpt_processor.extract_medicines(request.prescription_text)
         
         if not raw_medicines:
@@ -53,7 +53,7 @@ async def extract_medicines(request: ExtractMedsRequest):
                 correction_summary="No medicines found to correct."
             )
         
-        # Use GPT-4 to verify and correct medicine names
+        # Use GPT-4 to verify and correct medicine names (with fallback if OpenAI unavailable)
         verification_result = gpt_processor.verify_and_correct_medicine_names(
             raw_medicines, 
             request.prescription_text
@@ -90,9 +90,14 @@ async def extract_medicines(request: ExtractMedsRequest):
         )
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Medicine extraction failed: {str(e)}"
+        print(f"Error in extract_medicines endpoint: {str(e)}")
+        # Return a graceful error response instead of 500
+        return ExtractMedsResponse(
+            medicines=[],
+            success=False,
+            message=f"Failed to process prescription: {str(e)}",
+            count=0,
+            correction_summary="Processing failed - please try again"
         )
 
 @router.get("/extract-meds/test")

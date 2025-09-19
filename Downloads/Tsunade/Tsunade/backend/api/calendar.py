@@ -282,7 +282,7 @@ async def create_event(
 class SimpleEventCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    start_time: datetime
+    start_datetime: datetime
     duration_minutes: int = 60
     recurrence: Optional[str] = None
 
@@ -293,7 +293,7 @@ async def create_simple_event(
     db: Session = Depends(get_sync_db)
 ):
     """Create a simple calendar event for prescription integration."""
-    end_time = event_data.start_time + timedelta(minutes=event_data.duration_minutes)
+    end_datetime = event_data.start_datetime + timedelta(minutes=event_data.duration_minutes)
     
     # Map recurrence to RecurrenceType
     recurrence_type = RecurrenceType.NONE
@@ -307,10 +307,10 @@ async def create_simple_event(
         user_id=current_user.id,
         title=event_data.title,
         description=event_data.description,
-        event_type=EventType.HEALTH,
-        start_datetime=event_data.start_time,
-        end_datetime=end_time,
-        priority=Priority.MEDIUM,
+        event_type=EventType.MEDICATION,
+        start_datetime=event_data.start_datetime,
+        end_datetime=end_datetime,
+        priority=EventPriority.MEDIUM,
         is_all_day=False,
         reminder_minutes=15,
         recurrence_type=recurrence_type,
@@ -325,8 +325,8 @@ async def create_simple_event(
         "success": True,
         "event_id": event.id,
         "title": event.title,
-        "start_time": event.start_datetime,
-        "end_time": event.end_datetime
+        "start_datetime": event.start_datetime,
+        "end_datetime": event.end_datetime
     }
 
 @router.get("/events", response_model=List[EventResponse])

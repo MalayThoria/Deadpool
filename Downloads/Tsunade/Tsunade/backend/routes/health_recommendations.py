@@ -428,3 +428,157 @@ def _generate_personalized_dietary_plan(user_profile: UserProfile, medical_condi
             preparation_tips=["Cook at home when possible", "Read nutrition labels", "Control portion sizes"]
         )
     ]
+
+# New Pydantic models for day-wise diet chart
+class DayWiseDietRequest(BaseModel):
+    detected_diseases: List[str] = Field(..., description="List of detected diseases from prescription")
+    user_preferences: Dict[str, Any] = Field(default={}, description="User dietary preferences and restrictions")
+    duration_days: int = Field(default=7, description="Number of days for the diet chart")
+
+class MealPlan(BaseModel):
+    meal_type: str  # breakfast, lunch, dinner, snack
+    foods: List[str]
+    portion_size: str
+    calories: int
+    preparation_time: str
+    instructions: str
+
+class DayDietPlan(BaseModel):
+    day: int
+    day_name: str
+    meals: List[MealPlan]
+    total_calories: int
+    nutritional_focus: str
+    hydration_reminder: str
+
+class DayWiseDietResponse(BaseModel):
+    diet_plan: List[DayDietPlan]
+    general_guidelines: List[str]
+    food_restrictions: List[str] = []
+    nutritional_goals: List[str] = []
+    medical_disclaimer: str = "This dietary plan is generated for informational purposes only. Always consult with qualified healthcare providers before making significant dietary changes."
+    success: bool
+    message: str
+
+@router.post("/day-wise-diet-chart", response_model=DayWiseDietResponse)
+async def get_day_wise_diet_chart(
+    request: DayWiseDietRequest,
+    current_user: User = Depends(current_active_user),
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Generate a comprehensive day-wise diet chart based on detected diseases from prescription
+    """
+    try:
+        # Get user profile for personalization
+        user_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+        
+        # Enhanced medical safety prompt
+        prompt = f"""
+        As a certified clinical nutritionist and registered dietitian, create a medically appropriate {request.duration_days}-day diet chart for a patient with the following conditions: {', '.join(request.detected_diseases)}
+        
+        CRITICAL MEDICAL SAFETY REQUIREMENTS:
+        1. All recommendations must be evidence-based and medically appropriate
+        2. Include clear disclaimers about consulting healthcare providers
+        3. Avoid any recommendations that could be harmful for the specified conditions
+        4. Consider drug-nutrient interactions for common medications
+        5. Provide safe, conservative recommendations suitable for the general population
+        
+        Patient Profile:
+        - Detected Conditions: {', '.join(request.detected_diseases)}
+        - Duration: {request.duration_days} days
+        - User Preferences: {request.user_preferences}
+        - Age: {user_profile.age if user_profile else 'Not specified'}
+        - Gender: {user_profile.gender.value if user_profile and user_profile.gender else 'Not specified'}
+        
+        Create a structured diet plan with:
+        - Daily meal plans (breakfast, lunch, dinner, snacks)
+        - Nutritional focus for each day
+        - Calorie estimates
+        - Preparation time estimates
+        - General safety guidelines
+        
+        MANDATORY DISCLAIMERS:
+        - Always include "Consult your healthcare provider before making dietary changes"
+        - Emphasize the importance of medical supervision
+        - Include warnings about potential interactions with medications
+        
+        Return the response in a structured format suitable for a health application.
+        """
+        
+        # Use the enhanced GPT processor to generate day-wise diet chart
+        diet_chart_data = await gpt_processor.get_day_wise_diet_chart(
+            diseases=request.detected_diseases,
+            user_profile={
+                "age": user_profile.age if user_profile else None,
+                "gender": user_profile.gender.value if user_profile and user_profile.gender else None,
+                "fitness_level": user_profile.fitness_level.value if user_profile and user_profile.fitness_level else "beginner",
+                "preferences": request.user_preferences
+            },
+            duration_days=request.duration_days
+        )
+        
+        if diet_chart_data and diet_chart_data.get("success"):
+            # Convert the AI response to structured format
+            diet_plan = []
+            for day_data in diet_chart_data.get("diet_plan", []):
+                meals = []
+                for meal_data in day_data.get("meals", []):
+                    meals.append(MealPlan(
+                        meal_type=meal_data.get("meal_type", ""),
+                        foods=meal_data.get("foods", []),
+                        portion_size=meal_data.get("portion_size", ""),
+                        calories=meal_data.get("calories", 0),
+                        preparation_time=meal_data.get("preparation_time", ""),
+                        instructions=meal_data.get("instructions", "")
+                    ))
+                
+                diet_plan.append(DayDietPlan(
+                    day=day_data.get("day", 1),
+                    day_name=day_data.get("day_name", ""),
+                    meals=meals,
+                    total_calories=day_data.get("total_calories", 0),
+                    nutritional_focus=day_data.get("nutritional_focus", ""),
+                    hydration_reminder=day_data.get("hydration_reminder", "")
+                ))
+            
+            # Add mandatory medical disclaimers
+            enhanced_guidelines = [
+                "⚠️ IMPORTANT: Consult your healthcare provider before making any dietary changes",
+                "This diet chart is for informational purposes only and not a substitute for professional medical advice",
+                "Monitor your body's response and adjust portions based on your individual needs",
+                "If you have diabetes, hypertension, or other chronic conditions, seek medical supervision",
+                "Stop any dietary changes if you experience adverse reactions",
+                "Consider potential interactions with your current medications",
+                "Regular medical check-ups are essential while following this plan"
+            ] + diet_chart_data.get("general_guidelines", [])
+            
+            return DayWiseDietResponse(
+                diet_plan=diet_plan,
+                general_guidelines=enhanced_guidelines,
+                food_restrictions=diet_chart_data.get("food_restrictions", []),
+                nutritional_goals=diet_chart_data.get("nutritional_goals", []),
+                success=True,
+                message="Day-wise diet chart generated successfully with medical safety considerations"
+            )
+        else:
+            # Fallback response with safety guidelines
+            return DayWiseDietResponse(
+                diet_plan=[],
+                general_guidelines=[
+                    "Unable to generate personalized diet chart at this time",
+                    "Please consult with a registered dietitian for personalized nutrition advice",
+                    "Follow general healthy eating guidelines recommended by your healthcare provider",
+                    "⚠️ IMPORTANT: Always seek professional medical guidance for dietary changes"
+                ],
+                food_restrictions=[],
+                nutritional_goals=[],
+                success=False,
+                message="Diet chart generation temporarily unavailable - please consult healthcare professionals"
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate day-wise diet chart: {str(e)}"
+        )

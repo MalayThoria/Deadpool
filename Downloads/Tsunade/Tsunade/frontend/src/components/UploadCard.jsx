@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Camera, FileText, X, Image as ImageIcon } from 'lucide-react';
 
-const UploadCard = ({ onFileUpload, isProcessing }) => {
+const UploadCard = ({ onFileUpload, isProcessing, onAnalyze, hasFile }) => {
   const [preview, setPreview] = useState(null);
   const [fileName, setFileName] = useState('');
 
@@ -163,6 +163,29 @@ const UploadCard = ({ onFileUpload, isProcessing }) => {
         </motion.button>
       </div>
 
+      {/* Analysis Button */}
+      <div className="mt-3">
+        <motion.button
+          onClick={() => {
+            if (hasFile && onAnalyze) {
+              onAnalyze();
+            } else {
+              console.log('No file uploaded or analysis function not provided');
+            }
+          }}
+          disabled={isProcessing || !hasFile}
+          className={`w-full font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+            hasFile && !isProcessing 
+              ? 'bg-red-600 hover:bg-red-700 text-white' 
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+          whileHover={hasFile && !isProcessing ? { scale: 1.02 } : {}}
+          whileTap={hasFile && !isProcessing ? { scale: 0.98 } : {}}
+        >
+          <span>{isProcessing ? 'Analyzing...' : 'Analysis'}</span>
+        </motion.button>
+      </div>
+
       {/* Processing State */}
       {isProcessing && (
         <motion.div
@@ -186,4 +209,4 @@ const UploadCard = ({ onFileUpload, isProcessing }) => {
   );
 };
 
-export default UploadCard; 
+export default UploadCard;

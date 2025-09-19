@@ -14,10 +14,11 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  Brain
+  Brain,
+  Dumbbell
 } from 'lucide-react';
 import { useHealth } from '../contexts/HealthContext';
-import { prescriptionAPI, calendarAPI } from '../services/apiService';
+import { prescriptionAPI, calendarAPI, healthAPI } from '../services/apiService';
 
 const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, onClearResults }) => {
   const { user, processPrescription } = useHealth();
@@ -30,6 +31,7 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
   const [recommendations, setRecommendations] = useState(null);
   const [error, setError] = useState('');
   const [currentStep, setCurrentStep] = useState('upload'); // upload, ocr, analysis, recommendations
+  const [showHealthAnalysis, setShowHealthAnalysis] = useState(false);
 
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -98,6 +100,105 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
     }
   };
 
+  const handleHealthAnalysisClick = async () => {
+    if (!analysisResult) {
+      setError('Please upload and analyze a prescription first');
+      return;
+    }
+    
+    setShowHealthAnalysis(true);
+    setIsProcessing(true);
+    setError('');
+
+    try {
+      // Get enhanced recommendations based on detected diseases
+      const enhancedRecommendations = await getPersonalizedRecommendations(analysisResult);
+      
+      if (enhancedRecommendations) {
+        setRecommendations(enhancedRecommendations);
+        
+        // Schedule health events in the background
+        await scheduleHealthEvents(analysisResult);
+        
+        // Update health context
+        await processPrescription({
+          ...analysisResult,
+          recommendations: enhancedRecommendations
+        });
+        
+        setCurrentStep('recommendations');
+      } else {
+        setError('Unable to generate health recommendations. Please try again.');
+      }
+    } catch (err) {
+      setError('Error generating health analysis: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleHealthAnalysis = async () => {
+    if (!uploadedFile) {
+      setError('Please upload a prescription first');
+      return;
+    }
+
+    setIsProcessing(true);
+    setError('');
+    setCurrentStep('ocr');
+
+    try {
+      // First extract text from the prescription
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+
+      const ocrResponse = await prescriptionAPI.extractText(formData);
+
+      if (!ocrResponse.success) {
+        setError(ocrResponse.message || 'Failed to extract text from prescription');
+        return;
+      }
+
+      setOcrText(ocrResponse.text);
+      setCurrentStep('analysis');
+
+      // Perform comprehensive health analysis
+      const analysisResponse = await prescriptionAPI.uploadPrescription({
+        prescription_text: ocrResponse.text,
+        image_reference: fileName,
+        metadata: {
+          upload_timestamp: new Date().toISOString(),
+          file_type: uploadedFile?.type,
+          file_size: uploadedFile?.size
+        }
+      });
+
+      if (analysisResponse.success) {
+        setAnalysisResult(analysisResponse.analysis);
+        
+        // Get enhanced personalized recommendations including diet and exercise
+        const enhancedRecommendations = await getPersonalizedRecommendations(analysisResponse.analysis);
+        
+        if (enhancedRecommendations) {
+          setRecommendations(enhancedRecommendations);
+          
+          // Schedule health events in calendar
+          await scheduleHealthEvents(analysisResponse.analysis);
+          
+          setCurrentStep('recommendations');
+        } else {
+          setError('Failed to generate personalized recommendations');
+        }
+      } else {
+        setError(analysisResponse.message || 'Failed to analyze prescription');
+      }
+    } catch (err) {
+      setError('Error during health analysis: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const diagnoseDiseases = async () => {
     if (!ocrText) {
       setError('No text available for analysis');
@@ -108,30 +209,36 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
     setError('');
 
     try {
-      const response = await prescriptionAPI.analyzePrescription({
+      // Use the new integrated prescription processing endpoint
+      const response = await prescriptionAPI.uploadPrescription({
         prescription_text: ocrText,
-        auto_update_profile: true
+        image_reference: fileName,
+        metadata: {
+          upload_timestamp: new Date().toISOString(),
+          file_type: uploadedFile?.type,
+          file_size: uploadedFile?.size
+        }
       });
 
       if (response.success) {
-        setAnalysisResult(response.data);
+        // The new endpoint handles everything: analysis, recommendations, and dashboard integration
+        setAnalysisResult({
+          prescription_id: response.prescription_id,
+          integration_summary: response.integration_summary,
+          recommendations_created: response.recommendations_created,
+          dashboard_entries_created: response.dashboard_entries_created,
+          conditions_detected: response.conditions_detected
+        });
         
         const prescriptionData = {
-          extracted_info: response.data,
+          prescription_id: response.prescription_id,
           ocr_text: ocrText,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          integration_status: 'completed'
         };
         
-        // Use context to process prescription (handles calendar and recommendations)
+        // Use context to update local state
         await processPrescription(prescriptionData);
-        
-        // Get personalized recommendations based on detected conditions
-        if (response.data?.extracted_info?.medical_conditions?.length > 0) {
-          await getPersonalizedRecommendations(response.data.extracted_info.medical_conditions);
-        }
-        
-        // Automatically schedule health events
-        await scheduleHealthEvents(response.data);
         
         if (onProcessPrescription) {
           onProcessPrescription(prescriptionData);
@@ -139,33 +246,53 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
         
         setCurrentStep('recommendations');
       } else {
-        setError(response.message || 'Failed to analyze prescription');
+        setError(response.message || 'Failed to process prescription');
       }
     } catch (err) {
-      setError('Error analyzing prescription: ' + err.message);
+      setError('Error processing prescription: ' + err.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const getPersonalizedRecommendations = async (conditions) => {
+  const getPersonalizedRecommendations = async (analysisResult) => {
     try {
-      const response = await prescriptionAPI.getHealthRecommendations({
-        disease: conditions.join(', '),
-        severity: 'moderate',
-        user_context: {
-          age: 30,
-          gender: 'not_specified',
-          fitness_level: 'beginner'
-        }
-      });
-
-      if (response.success) {
-        setRecommendations(response.data);
-        return response.data;
+      // Extract detected diseases from analysis result
+      const detectedDiseases = analysisResult?.extracted_info?.conditions || 
+                              analysisResult?.conditions_detected || 
+                              [];
+      
+      if (detectedDiseases.length === 0) {
+        console.warn('No diseases detected for recommendations');
+        return null;
       }
-    } catch (err) {
-      console.error('Error getting recommendations:', err);
+
+      // Get comprehensive health recommendations including diet and exercise
+      const [dietResponse, exerciseResponse] = await Promise.all([
+        // Get day-wise diet chart
+        healthAPI.getDayWiseDietChart({
+          detected_diseases: detectedDiseases,
+          user_preferences: {},
+          duration_days: 7
+        }),
+        // Get disease-based exercise plan
+        healthAPI.getDiseaseBasedExercisePlan({
+          detected_diseases: detectedDiseases,
+          user_preferences: {},
+          fitness_level: "beginner",
+          available_time: 30
+        })
+      ]);
+
+      return {
+        diseases: detectedDiseases,
+        dietChart: dietResponse?.success ? dietResponse : null,
+        exercisePlan: exerciseResponse?.success ? exerciseResponse : null,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Error getting personalized recommendations:', error);
+      return null;
     }
   };
 
@@ -466,16 +593,31 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
       </div>
 
       {preview && (
-        <div className="flex space-x-3 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
           <motion.button
             onClick={processOCR}
             disabled={isProcessing}
-            className="flex-1 btn-primary flex items-center justify-center space-x-2"
+            className="btn-primary flex items-center justify-center space-x-2"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             <FileText className="w-4 h-4" />
             <span>{isProcessing ? 'Processing...' : 'Extract Text'}</span>
+          </motion.button>
+          
+          <motion.button
+            onClick={handleHealthAnalysisClick}
+            disabled={!analysisResult || isProcessing}
+            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+              !analysisResult || isProcessing
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 shadow-lg hover:shadow-xl'
+            }`}
+            whileHover={!analysisResult || isProcessing ? {} : { scale: 1.02 }}
+            whileTap={!analysisResult || isProcessing ? {} : { scale: 0.98 }}
+          >
+            <Activity className="w-4 h-4" />
+            <span>{isProcessing ? 'Analyzing...' : 'Health Analysis'}</span>
           </motion.button>
         </div>
       )}
@@ -561,12 +703,66 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6 mt-6"
     >
-      {recommendations?.exercise_recommendations && (
+      {/* Diet Chart Section */}
+      {recommendations?.dietChart && (
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+              <Utensils className="w-6 h-6 mr-2 text-orange-600" />
+              7-Day Diet Chart
+            </h3>
+          </div>
+          
+          <div className="space-y-4">
+            {recommendations.dietChart.diet_plan?.map((day, index) => (
+              <div key={index} className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                <h4 className="font-medium text-orange-800 dark:text-orange-200 mb-3">
+                  Day {day.day} - {day.day_name}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {day.meals?.map((meal, mealIndex) => (
+                    <div key={mealIndex} className="bg-white dark:bg-gray-800 rounded-lg p-3">
+                      <h5 className="font-medium text-orange-700 dark:text-orange-300 capitalize mb-2">
+                        {meal.meal_type}
+                      </h5>
+                      <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                        {meal.foods?.map((food, foodIndex) => (
+                          <li key={foodIndex}>• {food}</li>
+                        ))}
+                      </ul>
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                        {meal.calories} cal | {meal.preparation_time}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-sm text-orange-600 dark:text-orange-400">
+                  <strong>Focus:</strong> {day.nutritional_focus} | <strong>Total:</strong> {day.total_calories} calories
+                </div>
+              </div>
+            ))}
+            
+            {recommendations.dietChart.general_guidelines && (
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                <h4 className="font-medium text-orange-800 dark:text-orange-200 mb-2">General Guidelines:</h4>
+                <ul className="text-sm text-orange-700 dark:text-orange-300 space-y-1">
+                  {recommendations.dietChart.general_guidelines.map((guideline, index) => (
+                    <li key={index}>• {guideline}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Exercise Plan Section */}
+      {recommendations?.exercisePlan && (
         <div className="glass-card rounded-2xl p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center">
               <Activity className="w-6 h-6 mr-2 text-green-600" />
-              Exercise Recommendations
+              Weekly Exercise Plan
             </h3>
             
             {/* Google Calendar Integration */}
@@ -600,32 +796,56 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
           </div>
           
           <div className="space-y-4">
-            {recommendations.exercise_recommendations.exercises?.map((exercise, index) => (
-              <div key={index} className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-medium text-green-800 dark:text-green-200">{exercise.name}</h4>
-                  <button
-                    onClick={() => scheduleToCalendar('Exercise', exercise)}
-                    className="btn-sm btn-secondary flex items-center space-x-1"
-                  >
-                    <Calendar className="w-4 h-4" />
-                    <span>Schedule</span>
-                  </button>
+            {recommendations.exercisePlan.weekly_plan?.map((week, weekIndex) => (
+              <div key={weekIndex} className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                <h4 className="font-medium text-green-800 dark:text-green-200 mb-3">
+                  Week {week.week_number}
+                </h4>
+                <div className="space-y-3">
+                  {week.exercises?.map((exercise, exerciseIndex) => (
+                    <div key={exerciseIndex} className="bg-white dark:bg-gray-800 rounded-lg p-3">
+                      <div className="flex justify-between items-start mb-2">
+                        <h5 className="font-medium text-green-700 dark:text-green-300">{exercise.name}</h5>
+                        <button
+                          onClick={() => scheduleToCalendar('Exercise', exercise)}
+                          className="btn-sm btn-secondary flex items-center space-x-1"
+                        >
+                          <Calendar className="w-4 h-4" />
+                          <span>Schedule</span>
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        <div><strong>Type:</strong> {exercise.type}</div>
+                        <div><strong>Duration:</strong> {exercise.duration}</div>
+                        <div><strong>Intensity:</strong> {exercise.intensity}</div>
+                        <div><strong>Frequency:</strong> {exercise.frequency}</div>
+                      </div>
+                      <p className="text-sm text-green-600 dark:text-green-400 mb-2">{exercise.description}</p>
+                      {exercise.benefits && (
+                        <div className="text-sm text-green-700 dark:text-green-300 mb-2">
+                          <strong>Benefits:</strong> {exercise.benefits.join(', ')}
+                        </div>
+                      )}
+                      {exercise.precautions && (
+                        <p className="text-sm text-orange-600 dark:text-orange-400">
+                          <AlertCircle className="w-4 h-4 inline mr-1" />
+                          <strong>Precautions:</strong> {exercise.precautions.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <p className="text-sm text-green-700 dark:text-green-300 mb-1">
-                  <strong>Type:</strong> {exercise.type} | <strong>Duration:</strong> {exercise.duration} | <strong>Intensity:</strong> {exercise.intensity}
-                </p>
-                <p className="text-sm text-green-600 dark:text-green-400">{exercise.description}</p>
-                {exercise.precautions && (
-                  <p className="text-sm text-orange-600 dark:text-orange-400 mt-2">
-                    <AlertCircle className="w-4 h-4 inline mr-1" />
-                    {exercise.precautions}
-                  </p>
-                )}
               </div>
-            )) || (
+            ))}
+            
+            {recommendations.exercisePlan.general_guidelines && (
               <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                <p className="text-green-700 dark:text-green-300">{recommendations.exercise_recommendations}</p>
+                <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">General Guidelines:</h4>
+                <ul className="text-sm text-green-700 dark:text-green-300 space-y-1">
+                  {recommendations.exercisePlan.general_guidelines.map((guideline, index) => (
+                    <li key={index}>• {guideline}</li>
+                  ))}
+                </ul>
               </div>
             )}
             
@@ -719,7 +939,48 @@ const PrescriptionUpload = ({ onProcessPrescription, extractedText, medicines, o
       
       {(ocrText || analysisResult) && renderAnalysisSection()}
       
-      {recommendations && renderRecommendations()}
+      {/* Health Analysis Results - Compact Display */}
+      {showHealthAnalysis && recommendations && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-8 space-y-6"
+        >
+          <div className="glass-card rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+                <Activity className="w-6 h-6 mr-2 text-blue-600" />
+                Health Analysis & Daily Schedule
+              </h3>
+              <button
+                onClick={() => setShowHealthAnalysis(false)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Detected Diseases */}
+            {recommendations.diseases && recommendations.diseases.length > 0 && (
+              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Detected Conditions:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {recommendations.diseases.map((disease, index) => (
+                    <span key={index} className="px-3 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded-full text-sm">
+                      {disease}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {renderRecommendations()}
+        </motion.div>
+      )}
+
+      {/* Original Recommendations Display */}
+      {currentStep === 'recommendations' && !showHealthAnalysis && renderRecommendations()}
 
       {error && (
         <motion.div

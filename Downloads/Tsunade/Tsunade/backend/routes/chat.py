@@ -53,6 +53,14 @@ async def chat_with_assistant(request: ChatRequest):
         Respond in a conversational, helpful tone.
         """
         
+        # Check if OpenAI client is available
+        if gpt_processor.client is None:
+            return ChatResponse(
+                response="I'm sorry, but I'm currently unable to process your question due to a configuration issue. Please try again later or consult with your healthcare provider for immediate assistance.",
+                success=False,
+                message="OpenAI client not available"
+            )
+        
         # Get response from GPT
         response = gpt_processor.client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -73,9 +81,10 @@ async def chat_with_assistant(request: ChatRequest):
         )
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Chat processing failed: {str(e)}"
+        return ChatResponse(
+            response="I apologize, but I encountered an error while processing your question. Please try again or consult with your healthcare provider for assistance.",
+            success=False,
+            message=f"Chat processing failed: {str(e)}"
         )
 
 @router.get("/chat/suggestions")

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Heart, FileText, Activity, Clock, User, Plus, CheckCircle } from 'lucide-react';
 import { useHealth } from '../contexts/HealthContext';
 import PrescriptionUpload from './PrescriptionUpload';
-import HealthManagement from './HealthManagement';
 
 const UnifiedDashboard = ({ 
   onProcessPrescription, 
@@ -159,17 +158,6 @@ const UnifiedDashboard = ({
           </button>
           
           <button
-            onClick={() => setActiveSection('health')}
-            className="flex items-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
-          >
-            <Heart className="h-6 w-6 text-green-500 mr-3" />
-            <div className="text-left">
-              <p className="font-medium text-green-900 dark:text-green-100">Health Management</p>
-              <p className="text-sm text-green-600 dark:text-green-300">View health insights</p>
-            </div>
-          </button>
-          
-          <button
             onClick={() => setActiveSection('calendar')}
             className="flex items-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
           >
@@ -196,8 +184,6 @@ const UnifiedDashboard = ({
             onAddChatMessage={onAddChatMessage}
           />
         );
-      case 'health':
-        return <HealthManagement />;
       case 'calendar':
         return (
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
@@ -221,9 +207,8 @@ const UnifiedDashboard = ({
       <div className="mb-6">
         <nav className="flex space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
           {[
-            { id: 'overview', label: 'Dashboard', icon: Activity },
-            { id: 'prescription', label: 'Prescription Analysis', icon: FileText },
-            { id: 'health', label: 'Health Management', icon: Heart },
+            { id: 'overview', label: 'Overview', icon: Activity },
+            { id: 'prescription', label: 'RX Assistant', icon: FileText },
             { id: 'calendar', label: 'Calendar', icon: Calendar }
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -252,7 +237,7 @@ const UnifiedDashboard = ({
       {/* Loading State */}
       {(loading.profile || loading.recommendations) && (
         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-          <p className="text-blue-600 dark:text-blue-400">Loading dashboard data...</p>
+          <p className="text-blue-600 dark:text-blue-400">Loading data...</p>
         </div>
       )}
 

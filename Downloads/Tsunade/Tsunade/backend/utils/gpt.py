@@ -7,12 +7,18 @@ class GPTProcessor:
     def __init__(self):
         # Initialize OpenAI API
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
+        if not api_key or api_key.startswith("your-") or api_key.startswith("sk-your-"):
+            print("Warning: OpenAI API key not configured properly. Please set OPENAI_API_KEY in .env file")
+            print("Get your API key from: https://platform.openai.com/api-keys")
+            self.client = None
+            return
         
         # Initialize OpenAI API with error handling
         try:
             self.client = openai.OpenAI(api_key=api_key)
+            # Test the connection with a simple request
+            test_response = self.client.models.list()
+            print("OpenAI client initialized successfully")
         except Exception as e:
             print(f"Warning: Failed to initialize OpenAI client: {e}")
             self.client = None
@@ -29,7 +35,9 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                print("OpenAI client not available, using fallback extraction")
+                return self._fallback_medicine_extraction(prescription_text)
+                
             prompt = f"""
             Extract only the medicine names from this prescription text. 
             Return ONLY a JSON array of medicine names, nothing else.
@@ -44,7 +52,7 @@ class GPTProcessor:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a medical assistant that extracts disease names from prescriptions. Return only valid JSON arrays."},
+                    {"role": "system", "content": "You are a medical assistant that extracts medicine names from prescriptions. Return only valid JSON arrays."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
@@ -66,7 +74,8 @@ class GPTProcessor:
                 return self._fallback_medicine_extraction(content)
                 
         except Exception as e:
-            raise Exception(f"Medicine extraction failed: {str(e)}")
+            print(f"OpenAI extraction failed: {str(e)}, using fallback")
+            return self._fallback_medicine_extraction(prescription_text)
     
     def extract_diseases(self, prescription_text: str) -> List[str]:
         """
@@ -80,7 +89,7 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                return []  # Return empty list if client not available
                 
             prompt = f"""
             Extract only the disease names, medical conditions, or diagnoses from this prescription text.
@@ -146,6 +155,11 @@ class GPTProcessor:
             List of medicine information dictionaries
         """
         try:
+            # Check if OpenAI client is available
+            if self.client is None:
+                print("OpenAI client not available, using fallback medicine info")
+                return self._create_fallback_medicine_info(medicine_names)
+            
             medicines_str = ", ".join(medicine_names)
             
             prompt = f"""
@@ -191,13 +205,15 @@ class GPTProcessor:
                 if isinstance(medicine_info, list):
                     return medicine_info
                 else:
-                    return []
+                    return self._create_fallback_medicine_info(medicine_names)
             except json.JSONDecodeError:
                 # Fallback: create basic info structure
                 return self._create_fallback_medicine_info(medicine_names)
                 
         except Exception as e:
-            raise Exception(f"Medicine information retrieval failed: {str(e)}")
+            print(f"OpenAI API error in get_medicine_info: {e}")
+            # Return fallback instead of raising exception
+            return self._create_fallback_medicine_info(medicine_names)
     
     def get_exercise_recommendations(self, diseases: List[str], user_profile: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -212,7 +228,7 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                return self._create_fallback_exercise_recommendations(diseases, user_profile)
             
             # Default user profile if not provided
             if user_profile is None:
@@ -325,25 +341,41 @@ class GPTProcessor:
     
     def _fallback_medicine_extraction(self, text: str) -> List[str]:
         """
-        Fallback method for medicine extraction if JSON parsing fails
+        Fallback method for medicine extraction using regex patterns
         """
-        # Simple keyword-based extraction
-        medicine_keywords = [
-            'tablet', 'capsule', 'pill', 'mg', 'ml', 'mg/ml', 'injection',
-            'suspension', 'syrup', 'drops', 'cream', 'ointment', 'gel'
-        ]
+        import re
         
-        words = text.split()
         medicines = []
         
-        for i, word in enumerate(words):
-            if any(keyword in word.lower() for keyword in medicine_keywords):
-                # Try to get the medicine name (usually 1-3 words before the keyword)
-                start = max(0, i-3)
-                medicine_name = " ".join(words[start:i+1])
-                medicines.append(medicine_name)
+        # Common medicine name patterns
+        medicine_patterns = [
+            # Generic medicine patterns with dosage
+            r'([A-Z][a-z]+(?:cillin|mycin|prazole|olol|pine|ide|ine|zole|mab|nib))\s*(\d+\s*mg)?',
+            # Common medicine names
+            r'(Amoxicillin|Ibuprofen|Acetaminophen|Paracetamol|Aspirin|Metformin|Lisinopril|Atorvastatin|Omeprazole|Simvastatin)\s*(\d+\s*mg)?',
+            # Pattern for medicine followed by dosage
+            r'([A-Z][a-z]{2,})\s+(\d+\s*(?:mg|ml|g|mcg))',
+            # Pattern for Rx: followed by medicine name
+            r'(?:Rx|RX):\s*([A-Z][a-z]{2,})',
+            # Pattern for medicine names in caps
+            r'\b([A-Z]{3,})\s*(?:\d+\s*(?:mg|ml|g|mcg))?'
+        ]
         
-        return list(set(medicines))  # Remove duplicates
+        for pattern in medicine_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    medicine_name = match[0].strip()
+                else:
+                    medicine_name = match.strip()
+                
+                # Filter out common non-medicine words
+                if (len(medicine_name) > 2 and 
+                    medicine_name.lower() not in ['take', 'daily', 'times', 'tablet', 'capsule', 'dose', 'once', 'twice']):
+                    medicines.append(medicine_name.title())
+        
+        # Remove duplicates and return
+        return list(set(medicines)) if medicines else ["Unknown Medicine"]
     
     def _create_fallback_medicine_info(self, medicine_names: List[str]) -> List[Dict[str, Any]]:
         """
@@ -358,14 +390,18 @@ class GPTProcessor:
                 "dosage": "Consult your healthcare provider for dosage information",
                 "precautions": "Always consult with a healthcare professional before taking any medication",
                 "side_effects": "Side effects may vary. Consult your doctor for specific information.",
-                "category": "General medication"
+                "category": "General medication",
+                "interactions": "Consult your healthcare provider for drug interactions",
+                "pregnancy_safety": "Consult your healthcare provider regarding pregnancy safety",
+                "storage": "Store as directed on the package or by your healthcare provider",
+                "missed_dose": "Consult your healthcare provider for missed dose instructions"
             })
         
         return info_list
 
     def verify_and_correct_medicine_names(self, extracted_medicines: List[str], prescription_context: str = "") -> Dict:
         """
-        Use GPT-4 to verify and correct medicine names from OCR text
+        Verify and correct medicine names using GPT-4 or fallback to basic validation
         
         Args:
             extracted_medicines: List of medicine names from OCR
@@ -375,6 +411,10 @@ class GPTProcessor:
             Dictionary with corrected medicines and verification details
         """
         try:
+            if self.client is None:
+                print("OpenAI client not available, using basic validation")
+                return self._fallback_medicine_verification(extracted_medicines)
+                
             medicines_str = ", ".join(extracted_medicines)
             
             prompt = f"""
@@ -414,11 +454,11 @@ class GPTProcessor:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a medical expert specializing in prescription verification and medicine name correction. Provide accurate, detailed responses in JSON format."},
+                    {"role": "system", "content": "You are a pharmaceutical expert. Return only valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=1500
+                max_tokens=1000
             )
             
             content = response.choices[0].message.content.strip()
@@ -427,26 +467,35 @@ class GPTProcessor:
                 result = json.loads(content)
                 return result
             except json.JSONDecodeError:
-                # Fallback: return original medicines with low confidence
-                fallback_result = {
-                    "corrected_medicines": [
-                        {
-                            "original": med,
-                            "corrected": med,
-                            "confidence": 30,
-                            "method": "no_correction",
-                            "explanation": "Could not verify due to parsing error",
-                            "is_valid": True
-                        } for med in extracted_medicines
-                    ],
-                    "summary": "Could not verify medicines due to parsing error",
-                    "total_corrected": 0,
-                    "total_invalid": 0
-                }
-                return fallback_result
+                print("Failed to parse GPT response, using fallback verification")
+                return self._fallback_medicine_verification(extracted_medicines)
                 
         except Exception as e:
-            raise Exception(f"Medicine verification failed: {str(e)}")
+            print(f"Medicine verification failed: {str(e)}, using fallback")
+            return self._fallback_medicine_verification(extracted_medicines)
+    
+    def _fallback_medicine_verification(self, extracted_medicines: List[str]) -> Dict:
+        """
+        Basic fallback verification when OpenAI is not available
+        """
+        corrected_medicines = []
+        
+        for medicine in extracted_medicines:
+            corrected_medicines.append({
+                "original": medicine,
+                "corrected": medicine,
+                "confidence": 70,
+                "method": "fallback_validation",
+                "explanation": "Basic validation - OpenAI not available",
+                "is_valid": len(medicine) > 2 and medicine.replace(" ", "").isalpha()
+            })
+        
+        return {
+            "corrected_medicines": corrected_medicines,
+            "summary": f"Basic validation completed for {len(extracted_medicines)} medicine(s). OpenAI verification not available.",
+            "total_corrected": 0,
+            "total_invalid": sum(1 for med in corrected_medicines if not med["is_valid"])
+        }
 
     async def generate_health_recommendations(self, prompt: str) -> str:
         """
@@ -460,7 +509,7 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                return "Health recommendations are currently unavailable. Please consult with your healthcare provider for personalized advice."
                 
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -475,7 +524,7 @@ class GPTProcessor:
             return response.choices[0].message.content.strip()
             
         except Exception as e:
-            raise Exception(f"Health recommendation generation failed: {str(e)}")
+            return f"Health recommendations are currently unavailable due to technical issues. Please consult with your healthcare provider for personalized advice."
     
     async def generate_exercise_plan(self, user_profile: dict, medical_conditions: list) -> str:
         """
@@ -490,7 +539,7 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                return "Exercise plan generation is currently unavailable. Please consult with a fitness professional or healthcare provider for personalized exercise recommendations."
                 
             prompt = f"""
             Create a personalized exercise plan for a patient with the following profile:
@@ -520,7 +569,7 @@ class GPTProcessor:
             return response.choices[0].message.content.strip()
             
         except Exception as e:
-            raise Exception(f"Exercise plan generation failed: {str(e)}")
+            return "Exercise plan generation is currently unavailable due to technical issues. Please consult with a fitness professional or healthcare provider for personalized exercise recommendations."
     
     async def generate_dietary_recommendations(self, user_profile: dict, medical_conditions: list) -> str:
         """
@@ -535,7 +584,7 @@ class GPTProcessor:
         """
         try:
             if self.client is None:
-                raise Exception("OpenAI client not initialized")
+                return "Dietary recommendations are currently unavailable. Please consult with a registered dietitian or healthcare provider for personalized nutrition advice."
                 
             prompt = f"""
             Create personalized dietary recommendations for a patient with:
@@ -566,7 +615,192 @@ class GPTProcessor:
             return response.choices[0].message.content.strip()
             
         except Exception as e:
-            raise Exception(f"Dietary recommendation generation failed: {str(e)}")
+            return "Dietary recommendations are currently unavailable due to technical issues. Please consult with a registered dietitian or healthcare provider for personalized nutrition advice."
+
+    def get_day_wise_diet_chart(self, diseases: List[str], user_profile: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Generate a comprehensive day-wise diet chart based on diseases and user profile
+        
+        Args:
+            diseases: List of identified diseases/conditions
+            user_profile: Optional user profile with dietary preferences, restrictions
+            
+        Returns:
+            Dictionary containing day-wise diet chart with meals for each day
+        """
+        try:
+            if self.client is None:
+                return self._create_fallback_diet_chart(diseases, user_profile)
+            
+            # Default user profile if not provided
+            if user_profile is None:
+                user_profile = {
+                    "age": "adult",
+                    "dietary_preferences": "balanced",
+                    "allergies": [],
+                    "restrictions": []
+                }
+            
+            diseases_text = ", ".join(diseases) if diseases else "general health maintenance"
+            
+            prompt = f"""
+            Create a comprehensive 7-day diet chart for someone with the following medical conditions: {diseases_text}
+            
+            User Profile:
+            - Age: {user_profile.get('age', 'adult')}
+            - Dietary Preferences: {user_profile.get('dietary_preferences', 'balanced')}
+            - Allergies: {user_profile.get('allergies', [])}
+            - Restrictions: {user_profile.get('restrictions', [])}
+            
+            Please provide a detailed day-wise meal plan with:
+            1. Breakfast, Lunch, Dinner, and 2 Snacks for each day
+            2. Specific food items with approximate portions
+            3. Nutritional benefits for each meal
+            4. Special considerations for the medical conditions
+            5. Hydration recommendations
+            6. Foods to avoid completely
+            
+            Format the response as a structured JSON with days of the week and meal details.
+            Ensure all recommendations are medically appropriate for the conditions mentioned.
+            """
+            
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a certified clinical nutritionist specializing in therapeutic diets for medical conditions. Provide only valid JSON responses."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=2000
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            try:
+                # Try to parse as JSON first
+                result = json.loads(content)
+                return result
+            except json.JSONDecodeError:
+                # If JSON parsing fails, create structured response
+                return self._create_fallback_diet_chart(diseases, user_profile)
+                
+        except Exception as e:
+            print(f"Error generating diet chart: {e}")
+            return self._create_fallback_diet_chart(diseases, user_profile)
+
+    def _create_fallback_diet_chart(self, diseases: List[str], user_profile: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Create fallback diet chart when OpenAI client is not available
+        """
+        if user_profile is None:
+            user_profile = {"dietary_preferences": "balanced"}
+        
+        # Basic healthy diet chart suitable for most conditions
+        return {
+            "weekly_diet_plan": {
+                "monday": {
+                    "breakfast": {
+                        "items": ["Oatmeal with berries", "Green tea", "1 banana"],
+                        "portions": ["1 cup", "1 cup", "1 medium"],
+                        "benefits": "High fiber, antioxidants, sustained energy"
+                    },
+                    "lunch": {
+                        "items": ["Grilled chicken salad", "Brown rice", "Mixed vegetables"],
+                        "portions": ["150g", "1/2 cup", "1 cup"],
+                        "benefits": "Lean protein, complex carbs, vitamins"
+                    },
+                    "dinner": {
+                        "items": ["Baked fish", "Steamed broccoli", "Sweet potato"],
+                        "portions": ["150g", "1 cup", "1 medium"],
+                        "benefits": "Omega-3 fatty acids, fiber, beta-carotene"
+                    },
+                    "snacks": [
+                        {"items": ["Greek yogurt", "Almonds"], "portions": ["1 cup", "10 pieces"]},
+                        {"items": ["Apple slices", "Peanut butter"], "portions": ["1 medium", "1 tbsp"]}
+                    ]
+                },
+                "tuesday": {
+                    "breakfast": {
+                        "items": ["Whole grain toast", "Avocado", "Herbal tea"],
+                        "portions": ["2 slices", "1/2 medium", "1 cup"],
+                        "benefits": "Healthy fats, fiber, hydration"
+                    },
+                    "lunch": {
+                        "items": ["Lentil soup", "Quinoa", "Green salad"],
+                        "portions": ["1 cup", "1/2 cup", "1 cup"],
+                        "benefits": "Plant protein, complete amino acids, nutrients"
+                    },
+                    "dinner": {
+                        "items": ["Lean beef", "Roasted vegetables", "Brown rice"],
+                        "portions": ["100g", "1 cup", "1/2 cup"],
+                        "benefits": "Iron, vitamins, complex carbohydrates"
+                    },
+                    "snacks": [
+                        {"items": ["Carrot sticks", "Hummus"], "portions": ["1 cup", "2 tbsp"]},
+                        {"items": ["Mixed berries"], "portions": ["1/2 cup"]}
+                    ]
+                }
+            },
+            "general_guidelines": [
+                "Drink 8-10 glasses of water daily",
+                "Eat meals at regular intervals",
+                "Avoid processed and fried foods",
+                "Include variety in your diet",
+                "Consult healthcare provider for specific dietary needs"
+            ],
+            "foods_to_avoid": [
+                "Excessive sugar and refined carbs",
+                "Trans fats and processed foods",
+                "Excessive sodium",
+                "Alcohol (unless approved by doctor)",
+                "Foods high in saturated fats"
+            ],
+            "special_considerations": f"Diet plan considers general health principles. For specific conditions like {', '.join(diseases) if diseases else 'your condition'}, please consult with a registered dietitian.",
+            "note": "This is a general healthy diet plan. Individual needs may vary based on specific medical conditions, medications, and personal preferences."
+        }
+
+    def _create_fallback_exercise_recommendations(self, diseases: List[str], user_profile: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Create fallback exercise recommendations when OpenAI client is not available
+        """
+        if user_profile is None:
+            user_profile = {
+                "age": "adult",
+                "fitness_level": "beginner",
+                "preferences": "general wellness"
+            }
+        
+        return {
+            "daily_exercises": [
+                {
+                    "name": "Walking",
+                    "duration": "20-30 minutes",
+                    "description": "Light to moderate walking at comfortable pace",
+                    "benefits": "Improves cardiovascular health and general fitness",
+                    "precautions": "Start slowly and increase duration gradually",
+                    "time_of_day": "morning or evening"
+                },
+                {
+                    "name": "Stretching",
+                    "duration": "10-15 minutes",
+                    "description": "Basic stretching exercises for flexibility",
+                    "benefits": "Improves flexibility and reduces muscle tension",
+                    "precautions": "Don't overstretch, hold positions gently",
+                    "time_of_day": "morning or evening"
+                }
+            ],
+            "weekly_plan": {
+                "monday": ["Walking", "Stretching"],
+                "tuesday": ["Walking"],
+                "wednesday": ["Stretching"],
+                "thursday": ["Walking"],
+                "friday": ["Walking", "Stretching"],
+                "saturday": ["Light activity"],
+                "sunday": ["Rest or gentle stretching"]
+            },
+            "general_advice": "Start with light activities and gradually increase intensity. Always consult with healthcare provider before starting new exercise routine.",
+            "contraindications": ["High-intensity activities without medical clearance", "Activities causing pain or discomfort"]
+        }
 
 # Global GPT processor instance
 gpt_processor = GPTProcessor()

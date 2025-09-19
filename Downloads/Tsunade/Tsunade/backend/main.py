@@ -106,7 +106,8 @@ from api.admin import router as admin_router
 from api.privacy import router as privacy_router
 from api.exercise_tracking import router as exercise_router
 from api.health_insights import router as health_insights_router
-from routes import ocr, extract_meds, med_info, chat, exercise_recommendations, calendar_integration, health_recommendations, prescription_analysis
+from routers.health_analysis import router as health_analysis_router
+from routes import ocr, extract_meds, med_info, chat, exercise_recommendations, calendar_integration, health_recommendations, prescription_analysis, prescription_integration, websocket_routes
 
 # Authentication routes
 app.include_router(
@@ -148,6 +149,7 @@ app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(privacy_router, prefix="/api/privacy", tags=["Privacy & Compliance"])
 app.include_router(exercise_router, prefix="/api/exercise", tags=["Exercise Tracking"])
 app.include_router(health_insights_router, prefix="/api/health-insights", tags=["Health Insights"])
+app.include_router(health_analysis_router, prefix="/api/v1", tags=["Health Analysis"])
 
 # Existing routes
 app.include_router(ocr.router, prefix="/api/v1", tags=["OCR"])
@@ -158,6 +160,8 @@ app.include_router(exercise_recommendations.router, prefix="/api/v1", tags=["Exe
 app.include_router(calendar_integration.router, prefix="/api/v1", tags=["Calendar Integration"])
 app.include_router(health_recommendations.router, prefix="/api/v1", tags=["Health Recommendations"])
 app.include_router(prescription_analysis.router, prefix="/api/v1", tags=["Prescription Analysis"])
+app.include_router(prescription_integration.router, tags=["Prescription Integration"])
+app.include_router(websocket_routes.router, tags=["WebSocket"])
 
 @app.get("/")
 async def root():

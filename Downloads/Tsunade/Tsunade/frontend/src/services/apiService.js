@@ -210,12 +210,48 @@ export const healthAPI = {
   updateProfile: (data) => apiService.updateHealthProfile(data),
   getRecommendations: () => apiService.getPersonalizedRecommendations(),
   getDiseaseRecommendations: (disease, severity, context) => 
-    apiService.getDiseaseRecommendations(disease, severity, context)
+    apiService.getDiseaseRecommendations(disease, severity, context),
+  getDayWiseDietChart: (data) => apiService.request('/api/v1/health-insights/day-wise-diet-chart', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  getDiseaseBasedExercisePlan: (data) => apiService.request('/api/v1/exercise-recommendations/disease-based-exercise-plan', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
 };
 
 export const prescriptionAPI = {
   upload: (file) => apiService.uploadPrescription(file),
-  analyze: (text) => apiService.analyzePrescription(text)
+  analyze: (text) => apiService.analyzePrescription(text),
+  extractText: (formData) => apiService.request('/api/v1/ocr', {
+    method: 'POST',
+    body: formData,
+    contentType: undefined
+  }),
+  analyzePrescription: (data) => apiService.request('/api/v1/analyze-prescription', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  uploadPrescription: (data) => apiService.request('/api/v1/prescription-integration/upload', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  getDashboardData: (userId) => apiService.request(`/api/v1/prescription-integration/dashboard/${userId}`),
+  getPrescriptionHistory: (userId) => apiService.request(`/api/v1/prescription-integration/prescriptions/${userId}`),
+  getRecommendationHistory: (userId) => apiService.request(`/api/v1/prescription-integration/recommendations/${userId}`),
+  updateRecommendation: (recommendationId, data) => apiService.request(`/api/v1/prescription-integration/recommendations/${recommendationId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  }),
+  getSyncStatus: (userId) => apiService.request(`/api/v1/prescription-integration/sync-status/${userId}`),
+  resyncPrescription: (prescriptionId) => apiService.request(`/api/v1/prescription-integration/resync/${prescriptionId}`, {
+    method: 'POST'
+  }),
+  getHealthRecommendations: (data) => apiService.request('/api/v1/health-recommendations', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
 };
 
 export const calendarAPI = {

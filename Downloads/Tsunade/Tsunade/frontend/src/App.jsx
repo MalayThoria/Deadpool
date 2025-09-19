@@ -10,10 +10,10 @@ import UploadCard from './components/UploadCard';
 import MedicineCard from './components/MedicineCard';
 import HealthManagement from './components/HealthManagement';
 import PrescriptionUpload from './components/PrescriptionUpload';
-import UnifiedDashboard from './components/UnifiedDashboard';
 import Login from './components/Login';
 import Registration from './components/Registration';
 import GoogleCalendarCallback from './components/GoogleCalendarCallback';
+import ResultsModal from './components/ResultsModal';
 import { authAPI } from './services/apiService';
 import { Bot, FileText, AlertCircle, AlertTriangle, Heart, User, LogOut, Upload, Activity } from 'lucide-react';
 
@@ -22,6 +22,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api
 // Main App component wrapped with HealthProvider
 function AppContent() {
   const { user, isAuthenticated, login, logout } = useHealth();
+  const [currentView, setCurrentView] = useState('rx-assistant'); // 'login', 'register', 'rx-assistant'
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -30,9 +31,11 @@ function AppContent() {
   const [medicineCorrections, setMedicineCorrections] = useState([]);
   const [extractedText, setExtractedText] = useState('');
   const [isChatProcessing, setIsChatProcessing] = useState(false);
+  const [currentFile, setCurrentFile] = useState(null);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [modalResults, setModalResults] = useState(null);
   
   // Authentication state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'register', 'dashboard', 'chat'
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Check for existing authentication on app load
@@ -45,7 +48,7 @@ function AppContent() {
     }
     
     if (isAuthenticated) {
-      setCurrentView('dashboard'); // Default to dashboard
+      setCurrentView('rx-assistant'); // Default to RX assistant
     } else {
       setCurrentView('login');
     }
@@ -63,7 +66,7 @@ function AppContent() {
   // Authentication handlers
   const handleLoginSuccess = (authData) => {
     login(authData);
-    setCurrentView('dashboard');
+    setCurrentView('rx-assistant');
     toast.success('Welcome back! Login successful.');
   };
 
@@ -168,6 +171,15 @@ function AppContent() {
       // Add final AI message
       addMessage('ai', `I've analyzed your prescription and prepared detailed information for each medicine. You can view the details below.`);
       
+      // Show results modal with all the analysis data
+      setModalResults({
+        extractedText: extractedText,
+        medicines: medicinesInfo,
+        medicineCorrections: medicineData,
+        fileName: file.name
+      });
+      setShowResultsModal(true);
+      
       toast.success('Prescription processed successfully!');
       
     } catch (error) {
@@ -181,6 +193,7 @@ function AppContent() {
   };
 
   const handleFileUpload = (file) => {
+    setCurrentFile(file);
     processPrescription(file);
   };
 
@@ -189,6 +202,15 @@ function AppContent() {
     setMedicineCorrections([]);
     setExtractedText('');
     setMessages([]);
+    setCurrentFile(null);
+    setShowResultsModal(false);
+    setModalResults(null);
+  };
+
+  const handleAnalyze = () => {
+    if (currentFile) {
+      processPrescription(currentFile);
+    }
   };
 
   const handleChatMessage = async (message) => {
@@ -297,21 +319,9 @@ function AppContent() {
               {/* Navigation Tabs */}
               <nav className="flex space-x-1">
                 <button
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={() => setCurrentView('rx-assistant')}
                   className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    currentView === 'dashboard'
-                      ? 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                  }`}
-                >
-                  <Heart className="w-4 h-4 inline mr-2" />
-                  Health Dashboard
-                </button>
-                
-                <button
-                  onClick={() => setCurrentView('chat')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    currentView === 'chat'
+                    currentView === 'rx-assistant'
                       ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
                   }`}
@@ -350,21 +360,11 @@ function AppContent() {
       
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        {currentView === 'dashboard' && (
-          <UnifiedDashboard 
-            onProcessPrescription={processPrescription}
-            extractedText={extractedText}
-            medicines={medicines}
-            onClearResults={clearResults}
-            onAddChatMessage={addChatMessage}
-          />
-        )}
-        
         {currentView === 'calendar-callback' && (
           <GoogleCalendarCallback />
         )}
         
-        {currentView === 'chat' && (
+        {currentView === 'rx-assistant' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
             {/* Chat Area - Left Side */}
             <div className="flex flex-col">
@@ -399,6 +399,8 @@ function AppContent() {
               <UploadCard 
                 onFileUpload={handleFileUpload}
                 isProcessing={isProcessing}
+                onAnalyze={handleAnalyze}
+                hasFile={!!currentFile}
               />
               
               {/* Results Section */}
@@ -515,6 +517,13 @@ function AppContent() {
           </div>
         )}
       </div>
+      
+      {/* Results Modal */}
+      <ResultsModal
+        isOpen={showResultsModal}
+        onClose={() => setShowResultsModal(false)}
+        results={modalResults}
+      />
       </div>
   );
 }

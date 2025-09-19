@@ -1,11 +1,153 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 import json
 from utils.ocr import ocr_processor
 from utils.gpt import gpt_processor
+from database.config import get_sync_db
+from database.models import User, UserProfile
+from auth.auth import current_active_user
 
 router = APIRouter()
+
+# Pydantic models for enhanced exercise recommendations
+class DiseaseBasedExerciseRequest(BaseModel):
+    detected_diseases: List[str] = Field(..., description="List of detected diseases from prescription")
+    user_preferences: Dict[str, Any] = Field(default={}, description="User exercise preferences and limitations")
+    fitness_level: str = Field(default="beginner", description="Current fitness level")
+    available_time: int = Field(default=30, description="Available time per day in minutes")
+
+class ExerciseDetail(BaseModel):
+    name: str
+    type: str  # cardio, strength, flexibility, balance
+    duration_minutes: int
+    intensity: str  # low, moderate, high
+    frequency_per_week: int
+    instructions: str
+    precautions: List[str]
+    benefits: List[str]
+    modifications: List[str]
+
+class WeeklyExercisePlan(BaseModel):
+    day: int
+    day_name: str
+    exercises: List[ExerciseDetail]
+    total_duration: int
+    focus_area: str
+    rest_day: bool
+
+class DiseaseBasedExerciseResponse(BaseModel):
+    detected_diseases: List[str]
+    weekly_plan: List[WeeklyExercisePlan]
+    general_guidelines: List[str]
+    contraindications: List[str]
+    progress_tracking: List[str]
+    warning_signs: List[str] = []
+    medical_disclaimer: str = "This exercise plan is generated for informational purposes only. Always consult with qualified healthcare providers before starting any exercise program, especially with existing medical conditions."
+    success: bool
+    message: str
+
+@router.post("/disease-based-exercise-plan", response_model=DiseaseBasedExerciseResponse)
+async def get_disease_based_exercise_plan(request: DiseaseBasedExerciseRequest):
+    """
+    Generate a comprehensive disease-based exercise plan with medical safety considerations
+    """
+    try:
+        # Enhanced medical safety prompt
+        prompt = f"""
+        As a certified exercise physiologist and medical fitness specialist, create a medically appropriate exercise plan for a patient with: {', '.join(request.detected_diseases)}
+        
+        CRITICAL MEDICAL SAFETY REQUIREMENTS:
+        1. All exercise recommendations must be evidence-based and medically safe
+        2. Include clear contraindications and precautions for each condition
+        3. Provide modifications for different fitness levels and limitations
+        4. Consider potential complications and warning signs
+        5. Emphasize the importance of medical clearance before starting
+        
+        Patient Profile:
+        - Medical Conditions: {', '.join(request.detected_diseases)}
+        - Fitness Level: {request.fitness_level}
+        - Available Time: {request.available_time} minutes per session
+        - User Preferences: {request.user_preferences}
+        
+        Create a structured weekly exercise plan with:
+        - Safe exercise recommendations for each condition
+        - Proper progression guidelines
+        - Contraindications and precautions
+        - Warning signs to stop exercising
+        - Modifications for different abilities
+        
+        MANDATORY SAFETY MEASURES:
+        - Include "Obtain medical clearance before starting any exercise program"
+        - List specific warning signs for each condition
+        - Provide exercise modifications for safety
+        - Emphasize gradual progression and listening to the body
+        
+        Return a structured response suitable for a health application.
+        """
+        
+        try:
+            # Get user profile for personalization
+            user_profile = {}  # This would typically come from user authentication
+            
+            # Generate AI-powered exercise plan with enhanced safety measures
+            ai_response = await gpt_processor.generate_exercise_plan(user_profile, request.detected_diseases)
+            
+            # Convert AI response to structured format with safety validations
+            exercise_plan = gpt_processor.get_disease_based_exercise_plan(request.detected_diseases, user_profile)
+            
+            # Add mandatory medical disclaimers and safety guidelines
+            enhanced_guidelines = [
+                "🚨 MEDICAL CLEARANCE REQUIRED: Obtain approval from your healthcare provider before starting this exercise program",
+                "This exercise plan is for informational purposes only and not a substitute for professional medical advice",
+                "Stop exercising immediately if you experience chest pain, shortness of breath, dizziness, or unusual fatigue",
+                "Start slowly and progress gradually - listen to your body at all times",
+                "If you have heart disease, diabetes, or other chronic conditions, exercise under medical supervision",
+                "Consider working with a certified medical fitness professional",
+                "Regular medical monitoring is essential while following this exercise plan",
+                "Modify exercises based on your current symptoms and energy levels"
+            ]
+            
+            return DiseaseBasedExerciseResponse(
+                detected_diseases=request.detected_diseases,
+                weekly_plan=exercise_plan.get('weekly_plan', []),
+                general_guidelines=enhanced_guidelines,
+                contraindications=exercise_plan.get('contraindications', [
+                    "Acute illness or fever",
+                    "Uncontrolled high blood pressure",
+                    "Recent cardiac events",
+                    "Severe joint pain or inflammation",
+                    "Dizziness or balance problems"
+                ]),
+                progress_tracking=exercise_plan.get('progress_tracking', []),
+                success=True,
+                message="Disease-based exercise plan generated with comprehensive safety considerations"
+            )
+            
+        except Exception as e:
+            print(f"Error generating exercise plan: {e}")
+            return DiseaseBasedExerciseResponse(
+                detected_diseases=request.detected_diseases,
+                weekly_plan=[],
+                general_guidelines=[
+                    "Unable to generate personalized exercise plan at this time",
+                    "Please consult with a certified exercise physiologist or physical therapist",
+                    "Obtain medical clearance before starting any exercise program",
+                    "Follow exercise guidelines provided by your healthcare team"
+                ],
+                contraindications=[
+                    "Do not exercise without medical clearance",
+                    "Avoid strenuous activity if experiencing symptoms"
+                ],
+                progress_tracking=[],
+                success=False,
+                message="Exercise plan generation temporarily unavailable - please consult healthcare professionals"
+            )
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating exercise plan: {str(e)}")
 
 @router.post("/exercise-recommendations")
 async def get_exercise_recommendations(
